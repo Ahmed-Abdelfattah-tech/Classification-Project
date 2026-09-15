@@ -1,0 +1,7 @@
+__pycache__/
+.venv/
+.env
+.ipynb_checkpoints/
+train.csv
+test.csv
+Best_Model.pkl
