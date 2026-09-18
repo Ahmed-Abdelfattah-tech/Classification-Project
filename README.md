@@ -2,119 +2,99 @@
 
 ## 📌 Project Overview
 
-This project focuses on solving a **binary classification problem** using an anonymized tabular dataset.
+This project solves a **binary classification problem** on an anonymized tabular dataset from a Kaggle competition.
 
-The dataset contains ten numerical features with anonymized names (`f01`–`f10`) and a binary target variable. Since the original meaning of the features is not provided, the project focuses on the **machine learning workflow and predictive performance** rather than domain-specific interpretation.
+The dataset contains ten numerical features with anonymized names (`f01`–`f10`) and a binary target. Since the real meaning of the features is not provided, the project focuses on the **machine learning workflow and predictive performance** rather than domain-specific interpretation.
 
-The project covers the complete workflow from exploratory data analysis and preprocessing to model comparison, evaluation, feature importance analysis, and Kaggle submission.
+The project covers the full workflow: exploratory data analysis, preprocessing, model comparison, hyperparameter tuning, cross-validation, feature importance analysis, and Kaggle submission.
 
-The final CatBoost submission achieved a **ROC-AUC score of 0.86517 on the Kaggle public leaderboard**.
+The final CatBoost submission scored **0.86517 ROC-AUC on the Kaggle leaderboard and ranked 2nd** 🥈.
+
+![Kaggle Leaderboard](Kaggle_Leaderboard.png)
 
 ---
 
 ## 🎯 Objective
 
-The main objective is to build a classification model that can effectively distinguish between the two target classes and generate probability predictions for unseen test data.
+Build a classification model that separates the two target classes and produces **probability predictions** for unseen test data.
 
-The primary evaluation metric is **ROC-AUC**, making probability-based predictions particularly important for evaluating model performance.
+The evaluation metric is **ROC-AUC**, so the models are compared and submitted using predicted probabilities of the positive class (`predict_proba`), not hard class labels.
 
 ---
 
 ## 📊 Dataset
 
-The dataset consists of a training set and an unseen test set.
-
-| Dataset  |            Shape | Description                   |
-| -------- | ---------------: | ----------------------------- |
-| Training | `(103,217 , 12)` | 10 features + `id` + `target` |
-| Test     |  `(44,236 , 11)` | 10 features + `id`            |
+| Dataset  |          Shape | Description                   |
+| -------- | -------------: | ----------------------------- |
+| Training | `(103,217, 12)` | 10 features + `id` + `target` |
+| Test     |  `(44,236, 11)` | 10 features + `id`            |
 
 ### Features
-
-The available predictive features are:
 
 ```text
 f01, f02, f03, f04, f05,
 f06, f07, f08, f09, f10
 ```
 
-The `id` column is used only as an identifier and was excluded from model training.
+The `id` column is only an identifier and was dropped before training.
 
-> **Note:** The feature names are anonymized, so their real-world meanings are not available. Therefore, feature importance is interpreted only in terms of predictive contribution.
+> **Note:** Feature names are anonymized, so feature importance is interpreted only in terms of predictive contribution.
 
 ---
 
 ## 🔎 Exploratory Data Analysis
 
-The exploratory analysis included:
+The EDA in the notebook included:
 
-- Dataset dimensions
-- Data types
-- Summary statistics
+- Dataset shape, data types, and `df.info()`
+- Summary statistics (`df.describe()`)
 - Missing-value analysis
-- Duplicate-value checking
-- Target distribution
-- Feature distributions
-- Feature relationships
+- Duplicate check (**0 duplicate rows** found)
+- Feature distributions (histograms)
+- Correlation heatmap
 
 ### Missing Values
 
-Missing values were found in two features:
+Only two features contain missing values, in both the training and test sets:
 
-| Feature | Missing Values |
-| ------- | -------------: |
-| `f04`   |         20,118 |
-| `f06`   |          2,634 |
+| Feature | Missing in Train | Missing in Test |
+| ------- | ---------------: | --------------: |
+| `f04`   |           20,118 |           8,735 |
+| `f06`   |            2,634 |           1,139 |
 
-The missing values were handled using **median imputation**.
-
-The test set also contained missing values in the same features.
+Both were filled with **median imputation** (each dataset using its own median). The median was chosen because the features are heavily skewed with extreme outliers (for example, `f04` ranges down to about -618,904 and `f09` to about -694,787).
 
 ---
 
 ## ⚖️ Target Distribution
 
-The target variable is imbalanced.
+The target is imbalanced: the positive class is about **6.69%** of the training data (5,524 positives vs. 77,049 negatives in the training fold).
 
-The positive class represents approximately **6.69%** of the training data.
-
-Because of this imbalance, accuracy alone would not be an appropriate metric for comparing the models.
-
-The project therefore uses **ROC-AUC** as the main evaluation metric.
+Because of this, accuracy would be misleading, so **ROC-AUC** is used as the main metric.
 
 ---
 
 ## ⚙️ Data Preprocessing
 
-The preprocessing workflow included:
-
-1. Loading the training and test datasets.
-2. Inspecting the dataset structure and data types.
-3. Identifying missing values.
-4. Handling missing values using median imputation.
-5. Removing the `id` column from the model features.
-6. Separating features and target.
-7. Splitting the training data into training and validation sets.
-8. Using a **stratified split** to preserve the target distribution.
-9. Evaluating model predictions using ROC-AUC.
-
-The validation split used:
+1. Load the training and test sets.
+2. Inspect structure, data types, and missing values.
+3. Fill missing `f04` and `f06` values with the median.
+4. Drop the `id` column and separate features (`X`) from the target (`y`).
+5. Split into training and validation sets with a **stratified** split:
 
 ```python
-test_size=0.2
-random_state=42
-stratify=y
+train_test_split(X, y, test_size=0.2, random_state=42, stratify=y)
 ```
+
+6. Apply **`RobustScaler`** (chosen for its resistance to outliers) for the Logistic Regression baseline and the cross-validation experiment. The tree-based models were trained on the unscaled features, since tree models are not sensitive to feature scale.
 
 ---
 
 ## 🤖 Models
 
-A baseline model was first established using **Logistic Regression**, followed by several tree-based ensemble and boosting models.
-
 ### Baseline
 
-- Logistic Regression
+- Logistic Regression (`max_iter=250`, on `RobustScaler`-scaled data)
 
 ### Ensemble & Boosting Models
 
@@ -125,7 +105,18 @@ A baseline model was first established using **Logistic Regression**, followed b
 - Gradient Boosting
 - HistGradientBoosting
 
-This progression provides a comparison between a simple linear baseline and more powerful nonlinear ensemble methods.
+### Hyperparameter Tuning
+
+`GridSearchCV` (3-fold, `scoring='roc_auc'`) was used to search the parameter space for **XGBoost, LightGBM, and CatBoost**. The final values below were then refined manually around the grid-search results.
+
+| Model                | Final Hyperparameters                                                                                                   |
+| -------------------- | ----------------------------------------------------------------------------------------------------------------------- |
+| Random Forest        | `n_estimators=700, max_depth=15, min_samples_split=15, min_samples_leaf=10, max_features="sqrt"`                        |
+| XGBoost              | `n_estimators=200, max_depth=5, learning_rate=0.045, subsample=0.8, colsample_bytree=1.0`                               |
+| LightGBM             | `n_estimators=390, num_leaves=20, learning_rate=0.01, max_depth=-1, subsample=0.8, colsample_bytree=0.8`               |
+| **CatBoost**         | `iterations=380, depth=7, learning_rate=0.04, l2_leaf_reg=5, subsample=0.8`                                             |
+| Gradient Boosting    | `n_estimators=300, max_depth=5, learning_rate=0.05, subsample=0.9, min_samples_leaf=10`                                 |
+| HistGradientBoosting | `max_iter=250, max_depth=5, max_leaf_nodes=7, learning_rate=0.05, min_samples_leaf=50, l2_regularization=5`             |
 
 ---
 
@@ -135,112 +126,121 @@ All models were evaluated using **Validation ROC-AUC**.
 
 | Model                | Validation ROC-AUC |
 | -------------------- | -----------------: |
-| Logistic Regression  |        **0.69232** |
-| Random Forest        |        **0.86631** |
-| CatBoost             |        **0.86621** |
-| LightGBM             |        **0.86526** |
-| XGBoost              |        **0.86508** |
-| HistGradientBoosting |        **0.86467** |
-| Gradient Boosting    |        **0.86367** |
+| Logistic Regression  |            0.69232 |
+| **Random Forest**    |        **0.86631** |
+| **CatBoost** (final) |        **0.86595** |
+| LightGBM             |            0.86526 |
+| XGBoost              |            0.86508 |
+| HistGradientBoosting |            0.86467 |
+| Gradient Boosting    |            0.86367 |
 
-### Performance Comparison
+### Cross-Validation (LightGBM, 5-fold Stratified)
 
-The results show a substantial improvement from the Logistic Regression baseline to the ensemble-based models.
+To check that results are stable and not tied to a single split, LightGBM was evaluated with `StratifiedKFold(n_splits=5, shuffle=True, random_state=42)`:
 
-- Logistic Regression: **0.69232**
-- Best validation result: **Random Forest — 0.86631**
+| Fold | ROC-AUC |
+| ---- | ------: |
+| 1    | 0.86524 |
+| 2    | 0.86864 |
+| 3    | 0.86041 |
+| 4    | 0.85925 |
+| 5    | 0.86060 |
+| **Mean** | **0.86283** |
 
-This indicates that the relationship between the anonymized features and the target is likely more effectively captured by nonlinear ensemble models than by a simple linear classifier.
+### Takeaways
+
+- Moving from the linear baseline (**0.692**) to tree-based ensembles (**~0.864–0.866**) gives a large jump, which suggests the features relate to the target in a strongly nonlinear way.
+- The top boosting and ensemble models are extremely close (within about 0.001 ROC-AUC), and fold-to-fold variation in cross-validation (about ±0.005) is larger than that gap. So the ranking among them should be read as "roughly equivalent" rather than a clear winner.
 
 ---
 
 ## 🏆 Final Model
 
-Although Random Forest achieved the highest validation ROC-AUC (**0.86631**), **CatBoost** was selected for generating the final Kaggle submission.
+**CatBoost** was used for the final Kaggle submission (validation ROC-AUC **0.86595**, within 0.0004 of the best validation score from Random Forest at 0.86631).
 
-CatBoost validation performance:
-
-**ROC-AUC: 0.86621**
-
-The final predictions were generated as probabilities for the positive class.
-
----
-
-## 🥇 Kaggle Result
-
-The final CatBoost predictions were saved to:
+Final predictions are probabilities of the positive class, saved to:
 
 ```text
 Cat_Submission.csv
 ```
 
-The submission achieved the following public leaderboard result:
+The trained model is also saved with `joblib` (`Best_Model.pkl`) for future use.
 
-### **Kaggle Public Leaderboard ROC-AUC: 0.86517**
+---
 
-The local CatBoost validation score was **0.86621**, while the Kaggle public leaderboard score was **0.86517**.
+## 🥇 Kaggle Result
 
-The close scores indicate that the model achieved similar performance on the unseen Kaggle evaluation data.
+| Metric                     |     Score |
+| -------------------------- | --------: |
+| Local validation ROC-AUC   |   0.86595 |
+| **Kaggle leaderboard ROC-AUC** | **0.86517** |
+| **Leaderboard rank**       | **2nd 🥈** |
+
+The gap between the local validation score and the Kaggle score is only about **0.0008**, which indicates the validation setup is reliable and the model generalizes well to unseen data.
+
+![Kaggle Leaderboard](Kaggle_Leaderboard.png)
 
 ---
 
 ## 🔍 Feature Importance
 
-Feature importance was analyzed using the Random Forest model.
+Feature importance was analyzed with **Random Forest** and cross-checked with **XGBoost**.
 
-The analysis identifies which anonymized features contributed most strongly to the model's predictive decisions.
+| Feature | Random Forest | XGBoost |
+| ------- | ------------: | ------: |
+| `f10`   |         0.249 |   0.394 |
+| `f09`   |         0.203 |   0.195 |
+| `f01`   |         0.125 |   0.108 |
+| `f03`   |         0.107 |   0.156 |
+| `f02`   |         0.080 |   0.022 |
+| `f04`   |         0.071 |   0.021 |
+| `f05`   |         0.070 |   0.024 |
+| `f07`   |         0.053 |   0.023 |
+| `f06`   |         0.022 |   0.021 |
+| `f08`   |         0.021 |   0.036 |
 
-The feature importance analysis is intentionally presented without assigning real-world meanings to the features because the dataset does not provide their descriptions.
+Both models agree that **`f10`, `f09`, `f01`, and `f03`** are the strongest contributors, while `f06` is consistently among the weakest.
 
-### Most Important Features
-
-The strongest contributors included:
-
-- `f10`
-- `f09`
-- `f01`
-- `f03`
-
-while features such as `f06` and `f08` had relatively lower importance.
+As the features are anonymized, these results describe predictive contribution only, without assigning real-world meaning.
 
 ---
 
 ## 🧠 Key Machine Learning Concepts Demonstrated
 
-This project demonstrates practical application of:
-
 - Exploratory Data Analysis
-- Missing-value handling
-- Median imputation
+- Missing-value handling (median imputation)
+- Feature scaling with `RobustScaler`
 - Class imbalance analysis
 - Stratified train/validation splitting
-- Binary classification
-- Logistic Regression
-- Random Forest
-- Gradient Boosting
-- XGBoost
-- LightGBM
-- CatBoost
-- HistGradientBoosting
-- Hyperparameter tuning
+- Stratified K-Fold cross-validation
+- Binary classification with a Logistic Regression baseline
+- Random Forest, Gradient Boosting, XGBoost, LightGBM, CatBoost, HistGradientBoosting
+- Hyperparameter tuning with `GridSearchCV`
 - Probability-based predictions
 - ROC-AUC evaluation
 - Feature importance analysis
+- Model persistence with `joblib`
 - Kaggle submission workflow
+
+---
+
+## 🔭 Limitations & Future Improvements
+
+- **Train on all data:** the final model was trained on about 80% of the training data. Retraining on the full training set before predicting could give a small gain.
+- **Imputation inside the split:** median imputation was applied before the train/validation split. Fitting the imputer on the training fold only (for example inside a `Pipeline`) would be cleaner.
+- **Ensembling:** the top models score very similarly, so blending or stacking CatBoost, LightGBM, XGBoost, and Random Forest is a natural next step.
+- **Feature engineering:** with only ten features, missing-value indicators for `f04` and `f06` and interactions between the top features (`f10`, `f09`, `f01`, `f03`) are worth testing.
+- **Class imbalance:** try class weights or `scale_pos_weight` and compare against the current probability-based approach.
 
 ---
 
 ## 🛠️ Technologies
 
 - **Python**
-- **Pandas**
-- **NumPy**
-- **Matplotlib**
-- **Seaborn**
+- **Pandas**, **NumPy**
+- **Matplotlib**, **Seaborn**
 - **Scikit-learn**
-- **XGBoost**
-- **LightGBM**
-- **CatBoost**
+- **XGBoost**, **LightGBM**, **CatBoost**
 - **Joblib**
 - **Jupyter Notebook**
 
@@ -253,6 +253,7 @@ Kaggle-Classification-Project/
 │
 ├── Classification_Project.ipynb
 ├── Cat_Submission.csv
+├── Kaggle_Leaderboard.png
 ├── README.md
 ├── requirements.txt
 └── .gitignore
@@ -275,29 +276,27 @@ cd Kaggle-Classification-Project
 pip install -r requirements.txt
 ```
 
-### 3. Open the notebook
+### 3. Add the competition data
+
+Download `train.csv` and `test.csv` from the Kaggle competition page and place them next to the notebook.
+
+### 4. Open the notebook
 
 ```text
 Classification_Project.ipynb
 ```
 
-Run the notebook cells sequentially to reproduce the analysis and model training workflow.
+Run the cells sequentially to reproduce the analysis, model training, and submission file.
 
 ---
 
 ## 📌 Key Takeaways
 
-This project demonstrates a complete practical machine learning workflow for an anonymized tabular classification problem.
+Starting from a **Logistic Regression baseline (0.692)**, several ensemble and boosting models were compared, and the best of them reach about **0.866 validation ROC-AUC**. **CatBoost** was used for the final submission and achieved:
 
-Starting with **Logistic Regression as a baseline**, multiple ensemble and boosting algorithms were evaluated. The results showed that nonlinear ensemble models significantly outperformed the linear baseline.
+> **0.86517 ROC-AUC on Kaggle — 2nd place on the leaderboard** 🥈
 
-The best local validation result was achieved by **Random Forest with a ROC-AUC of 0.86631**, while **CatBoost** was selected for the final Kaggle submission.
-
-The final submission achieved:
-
-> **0.86517 ROC-AUC on the Kaggle Public Leaderboard**
-
-The project highlights the importance of model comparison, appropriate evaluation metrics, handling class imbalance, and validating models on unseen data.
+The project highlights the value of a strong baseline, an appropriate metric for an imbalanced target, cross-validation, and checking that local validation scores match the score on unseen data.
 
 ---
 
